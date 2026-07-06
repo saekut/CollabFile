@@ -1,0 +1,58 @@
+# ---- Unity .gitignore ----
+# Put this file in your Unity project ROOT (the folder that contains
+# Assets/, ProjectSettings/, Packages/). It stops the huge auto-generated
+# folders from being committed.
+
+# Auto-generated / rebuildable folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Editor / IDE
+.vs/
+.idea/
+.gradle/
+.consulo/
+ExportedObj/
+
+# Auto-generated project files
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Meta of ignored files
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Builds / packages
+sysinfo.txt
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# Crashlytics
+crashlytics-build.properties
+
+# Addressables
+/[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
+/[Aa]ssets/[Ss]treamingAssets/aa.meta
+/[Aa]ssets/[Ss]treamingAssets/aa/*
