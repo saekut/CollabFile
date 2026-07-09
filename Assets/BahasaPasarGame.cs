@@ -24,6 +24,34 @@ public class BahasaPasarGame : MonoBehaviour
 {
     public int port = 5005;
 
+    [Header("Manual Character Slots")]
+    public Image characterBodyImage;
+    public Image characterFaceImage;
+    public Image characterClothesImage;
+    public Image characterHairImage;
+    public Image characterFacialImage;
+
+    [Header("Manual Prop Slots")]
+    public Image intentImage;
+    public Image topicImage;
+    public Image toneImage;
+    public Image extraImage;
+
+    [Header("Manual Canvas Layout")]
+    public bool useManualCanvasLayout;
+    public TextMeshProUGUI manualSentenceText;
+    public TextMeshProUGUI manualStatusText;
+    public TextMeshProUGUI manualMeaningText;
+    public TextMeshProUGUI manualResponseText;
+    public GameObject manualEmptyMessage;
+
+    [Header("Manual Dev Controls")]
+    public bool autoCreateDevPanel = false;
+    public GameObject manualDevPanel;
+    public Button manualDevToggleButton;
+    public Button manualCakapButton;
+    public Button manualClearButton;
+
     class Card {
         public string text, spoken, category, type, en, zh;
         public string[] accepts;
@@ -87,9 +115,29 @@ public class BahasaPasarGame : MonoBehaviour
     };
 
     Dictionary<string, Card> selected = new Dictionary<string, Card>();
+    CharacterLook forcedCharacterLook;
+    readonly string[] bodySkinPaths = {
+        "Chracters/Body-SkinColor/1 Lightest", "Chracters/Body-SkinColor/2",
+        "Chracters/Body-SkinColor/3", "Chracters/Body-SkinColor/4",
+        "Chracters/Body-SkinColor/5", "Chracters/Body-SkinColor/6 Darkest"
+    };
+    readonly string[] faceSkinPaths = {
+        "Chracters/Face-SkinColor/1 Lightest (2)", "Chracters/Face-SkinColor/2 (2)",
+        "Chracters/Face-SkinColor/3 (2)", "Chracters/Face-SkinColor/4 (2)",
+        "Chracters/Face-SkinColor/5 (2)", "Chracters/Face-SkinColor/6 Darkest (2)"
+    };
+    readonly string[] maleFacialPaths = {
+        "", "Chracters/Facial/Beard", "Chracters/Facial/Glasses", "Chracters/Facial/Goatee"
+    };
+
+    class CharacterLook {
+        public string clothesPath, hairPath, facialPath;
+        public Sprite clothesSprite;
+        public int skinIndex;
+    }
 
     // UI
-    Transform spriteRow; TextMeshProUGUI sentenceText, statusText, meaningText, responseText;
+    Transform characterSlot, spriteRow; TextMeshProUGUI sentenceText, statusText, meaningText, responseText;
     GameObject emptyMsg, devPanel; readonly List<Card> devPick = new List<Card>();
 
     // UDP
@@ -98,7 +146,37 @@ public class BahasaPasarGame : MonoBehaviour
     [System.Serializable] class Item { public string name; public string category; }
     [System.Serializable] class Detection { public string status; public int count; public Item[] items; }
 
-    void Start() { BuildUI(); ShowEmpty(); StartReceiver(); }
+    void Start() {
+        if (useManualCanvasLayout) UseManualUI();
+        else BuildUI();
+        ShowEmpty();
+        StartReceiver();
+    }
+
+    void UseManualUI() {
+        sentenceText = manualSentenceText;
+        statusText = manualStatusText;
+        meaningText = manualMeaningText;
+        responseText = manualResponseText;
+        emptyMsg = manualEmptyMessage;
+        devPanel = manualDevPanel;
+
+        if (manualDevToggleButton != null) manualDevToggleButton.onClick.AddListener(ToggleDevPanel);
+        if (manualCakapButton != null) manualCakapButton.onClick.AddListener(DevEval);
+        if (manualClearButton != null) manualClearButton.onClick.AddListener(ClearManualDevPick);
+
+
+
+        if (devPanel != null) devPanel.SetActive(false);
+    }
+
+    Transform FindManualCanvasRoot() {
+        if (manualSentenceText != null) return manualSentenceText.canvas.transform;
+        if (characterBodyImage != null) return characterBodyImage.canvas.transform;
+        if (intentImage != null) return intentImage.canvas.transform;
+        var canvas = FindObjectOfType<Canvas>();
+        return canvas != null ? canvas.transform : null;
+    }
 
     // ================= UI =================
     void BuildUI() {
@@ -110,13 +188,22 @@ public class BahasaPasarGame : MonoBehaviour
         var root = cGO.transform;
         Panel(root, Vector2.zero, Vector2.one, new Color(0.09f,0.10f,0.12f,1));
 
-        // TOP 60% sprite area
+        // TOP 60% visual area: character on the left, props on the right.
         var top = Panel(root, new Vector2(0.02f,0.42f), new Vector2(0.98f,0.97f), new Color(1,1,1,0.04f));
-        var grid = top.AddComponent<GridLayoutGroup>();
-        grid.cellSize = new Vector2(240,150); grid.spacing = new Vector2(14,14);
-        grid.padding = new RectOffset(20,20,20,20);
-        grid.childAlignment = TextAnchor.MiddleCenter;
-        spriteRow = top.transform;
+        var characterPanel = Panel(top.transform, new Vector2(0.02f,0.06f), new Vector2(0.32f,0.94f), new Color(0.12f,0.14f,0.18f,1));
+        var characterGrid = characterPanel.AddComponent<GridLayoutGroup>();
+        characterGrid.cellSize = new Vector2(150,130); characterGrid.spacing = new Vector2(12,12);
+        characterGrid.padding = new RectOffset(16,16,16,16);
+        characterGrid.childAlignment = TextAnchor.UpperCenter;
+        characterSlot = characterPanel.transform;
+
+        var propPanel = Panel(top.transform, new Vector2(0.36f,0.06f), new Vector2(0.98f,0.94f), new Color(0.10f,0.11f,0.14f,1));
+        var grid = propPanel.AddComponent<GridLayoutGroup>();
+        grid.cellSize = new Vector2(260,140); grid.spacing = new Vector2(24,24);
+        grid.padding = new RectOffset(24,24,24,24);
+        grid.childAlignment = TextAnchor.UpperLeft;
+        spriteRow = propPanel.transform;
+
         emptyMsg = Text(root,"Please put 4 props inside the bowl",
             new Vector2(0.1f,0.6f), new Vector2(0.9f,0.8f), 54, TextAlignmentOptions.Center, new Color(.7f,.7f,.7f)).gameObject;
 
@@ -158,6 +245,46 @@ public class BahasaPasarGame : MonoBehaviour
                () => { devPick.Clear(); Process(new List<string>()); });
     }
 
+    public void ToggleDevPanel() {
+        if (devPanel != null) devPanel.SetActive(!devPanel.activeSelf);
+    }
+    public void ClearManualDevPick() {
+        devPick.Clear();
+        Process(new List<string>());
+    }
+    public void PickBoss() { ForceSpeakerLookFromFolder("Boss / Tauke", "Boss", "Man - Guy", true, false); }
+    public void PickAhMoi() { ForceSpeakerLookFromFolder("Ah Moi", "Ah Moi", "Girl - Woman (Other Race)", false, false); }
+    public void PickLenglui() { ForceSpeakerLookFromFolder("Lengzai / LengLui", "Lenglui", "Girl - Woman (Other Race)", false, false); }
+    public void PickLengzai() { ForceSpeakerLookFromFolder("Lengzai / LengLui", "Lengzai", "Man - Guy", true, false); }
+    public void PickBang() { ForceSpeakerLookFromFolder("Bang", "Bang", "Male (Malay)", true, true); }
+    public void PickAunty() { ForceSpeakerLookFromFolder("Uncle / Aunty", "Aunty", "Girls - Woman (Malay)", false, true); }
+    public void PickUncle() { ForceSpeakerLookFromFolder("Uncle / Aunty", "Uncle", "Uncle - Old Guy", true, true); }
+    public void PickAdik() { ForceSpeakerLookFromFolder("Adik", "Adik", "Young Boy", true, true); }
+    public void PickAdikFemale() { ForceSpeakerLookFromFolder("Adik", "Adik (Female)", "Girls - Woman (Malay) 2", false, true); }
+
+    void ToggleDevCard(string cardText) {
+        forcedCharacterLook = null;
+        var card = FindCard(cardText);
+        if (card == null) return;
+        if (devPick.Contains(card)) devPick.Remove(card);
+        else devPick.Add(card);
+        DevEval();
+    }
+    void ForceSpeakerLook(string cardText, string clothes, string hair, bool male, bool malaySkin) {
+        ForceSpeakerLookFromFolder(cardText, clothes, hair, male, malaySkin);
+    }
+    void ForceSpeakerLookFromFolder(string cardText, string clothesFolder, string hair, bool male, bool malaySkin) {
+        var card = FindCard(cardText);
+        if (card == null) return;
+        if (devPick.Contains(card)) {
+            devPick.Remove(card);
+            forcedCharacterLook = null;
+        } else {
+            devPick.Add(card);
+            forcedCharacterLook = BuildLookFromClothesFolder(clothesFolder, hair, male, malaySkin);
+        }
+        DevEval();
+    }
     void DevEval() { Process(devPick.Select(c=>c.text).ToList()); }
 
     GameObject Panel(Transform p, Vector2 aMin, Vector2 aMax, Color c) {
@@ -188,7 +315,144 @@ public class BahasaPasarGame : MonoBehaviour
         var img = go.AddComponent<Image>(); img.color = new Color(0.2f,0.22f,0.26f,1);
         Text(go.transform, name, new Vector2(0.04f,0.04f), new Vector2(0.96f,0.96f), 20, TextAlignmentOptions.Center, Color.white);
     }
-    void ClearSprites() { for (int i=spriteRow.childCount-1;i>=0;i--) { var c=spriteRow.GetChild(i); if(c.GetComponent<GridLayoutGroup>()==null) Destroy(c.gameObject);} }
+    void AddCharacterBox(Card speaker) {
+        var look = forcedCharacterLook ?? RandomCharacterLook(speaker);
+        if (HasManualCharacterSlots()) {
+            SetSlotSprite(characterBodyImage, bodySkinPaths[look.skinIndex]);
+            SetSlotSprite(characterFaceImage, faceSkinPaths[look.skinIndex]);
+            SetSlotSprite(characterClothesImage, look.clothesSprite, look.clothesPath);
+            SetSlotSprite(characterHairImage, look.hairPath);
+            SetSlotSprite(characterFacialImage, look.facialPath);
+            return;
+        }
+
+        AddCharacterPart(bodySkinPaths[look.skinIndex], "Body");
+        AddCharacterPart(faceSkinPaths[look.skinIndex], "Face");
+        AddCharacterPart(look.clothesSprite, look.clothesPath, "Clothes");
+        AddCharacterPart(look.hairPath, "Hair");
+        if (!string.IsNullOrEmpty(look.facialPath)) AddCharacterPart(look.facialPath, "Facial");
+    }
+    void AddCharacterPart(string resourcePath, string label) {
+        AddCharacterPart(null, resourcePath, label);
+    }
+    void AddCharacterPart(Sprite sprite, string resourcePath, string label) {
+        if (sprite == null && !string.IsNullOrEmpty(resourcePath)) sprite = Resources.Load<Sprite>(resourcePath);
+        if (sprite == null) {
+            Debug.LogWarning("Missing character sprite: " + resourcePath);
+            return;
+        }
+
+        var card = new GameObject(label + "Part"); card.transform.SetParent(characterSlot,false);
+        var bg = card.AddComponent<Image>(); bg.color = new Color(0.16f,0.18f,0.22f,1);
+        var btn = card.AddComponent<Button>();
+        btn.onClick.AddListener(() => { ClearSprites(); FillSprites(SpriteModules("valid")); });
+
+        var imageGo = new GameObject(label); imageGo.transform.SetParent(card.transform,false);
+        var img = imageGo.AddComponent<Image>(); img.sprite = sprite; img.color = Color.white; img.preserveAspect = true;
+        var rt = img.rectTransform;
+        rt.anchorMin = new Vector2(0.06f,0.20f); rt.anchorMax = new Vector2(0.94f,0.96f);
+        rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+
+        Text(card.transform, label, new Vector2(0.04f,0.02f), new Vector2(0.96f,0.18f), 14,
+             TextAlignmentOptions.Center, new Color(.85f,.85f,.85f));
+    }
+    CharacterLook RandomCharacterLook(Card speaker) {
+        var look = new CharacterLook();
+        bool male = true;
+        bool malaySkin = false;
+        string clothes = "Boss", hair = "Man - Guy";
+
+        switch (speaker.text) {
+            case "Boss / Tauke":
+                clothes = "Boss";
+                hair = Random.value < .5f ? "Man - Guy" : "Man - Guy 2";
+                break;
+            case "Lengzai / LengLui":
+                male = Random.value < .5f;
+                clothes = male ? "Lengzai" : "Lenglui";
+                hair = male ? (Random.value < .5f ? "Man - Guy" : "Man - Guy 2") : "Girl - Woman (Other Race)";
+                break;
+            case "Ah Moi":
+                male = false;
+                clothes = "Ah Moi";
+                hair = "Girl - Woman (Other Race)";
+                break;
+            case "Uncle / Aunty":
+                male = Random.value < .5f;
+                clothes = male ? "Uncle" : "Aunty";
+                hair = male ? "Uncle - Old Guy" : "Girls - Woman (Malay)";
+                malaySkin = !male || Random.value < .55f;
+                break;
+            case "Adik":
+                male = Random.value < .55f;
+                clothes = male ? "Adik" : (Random.value < .5f ? "Ah Moi" : "Lenglui");
+                hair = male ? "Young Boy" : "Girls - Woman (Malay) 2";
+                malaySkin = true;
+                break;
+            case "Bang":
+                clothes = "Bang";
+                hair = "Male (Malay)";
+                malaySkin = true;
+                break;
+        }
+
+        return BuildLookFromClothesFolder(clothes, hair, male, malaySkin);
+    }
+    CharacterLook BuildLook(string clothes, string hair, bool male, bool malaySkin) {
+        return BuildLookFromClothesFolder(clothes, hair, male, malaySkin);
+    }
+    CharacterLook BuildLookFromClothesFolder(string clothesFolder, string hair, bool male, bool malaySkin) {
+        var look = new CharacterLook();
+        look.skinIndex = malaySkin ? Random.Range(3, 6) : Random.Range(0, 6);
+        look.clothesPath = "Chracters/Clothes/" + clothesFolder;
+        var clothesSprites = Resources.LoadAll<Sprite>(look.clothesPath);
+        if (clothesSprites != null && clothesSprites.Length > 0) {
+            look.clothesSprite = clothesSprites[Random.Range(0, clothesSprites.Length)];
+        } else {
+            Debug.LogWarning("Missing clothes folder sprites: " + look.clothesPath);
+        }
+        look.hairPath = "Chracters/Hair/" + hair;
+        look.facialPath = male ? maleFacialPaths[Random.Range(0, maleFacialPaths.Length)] : "";
+        return look;
+    }
+    void ClearSprites() {
+        ClearChildren(spriteRow);
+        ClearChildren(characterSlot);
+        ClearManualSlots();
+    }
+    void ClearChildren(Transform parent) {
+        if (parent == null) return;
+        for (int i=parent.childCount-1;i>=0;i--) Destroy(parent.GetChild(i).gameObject);
+    }
+    bool HasManualCharacterSlots() {
+        return characterBodyImage != null || characterFaceImage != null || characterClothesImage != null ||
+               characterHairImage != null || characterFacialImage != null;
+    }
+    void ClearManualSlots() {
+        ClearSlot(characterBodyImage); ClearSlot(characterFaceImage); ClearSlot(characterClothesImage);
+        ClearSlot(characterHairImage); ClearSlot(characterFacialImage); ClearSlot(intentImage);
+        ClearSlot(topicImage); ClearSlot(toneImage); ClearSlot(extraImage);
+    }
+    void ClearSlot(Image img) {
+        if (img == null) return;
+        img.sprite = null;
+        img.enabled = false;
+    }
+    void SetSlotSprite(Image img, string resourcePath) {
+        SetSlotSprite(img, null, resourcePath);
+    }
+    void SetSlotSprite(Image img, Sprite sprite, string resourcePath) {
+        if (img == null) return;
+        if (sprite == null && !string.IsNullOrEmpty(resourcePath)) sprite = Resources.Load<Sprite>(resourcePath);
+        if (sprite == null) {
+            if (!string.IsNullOrEmpty(resourcePath)) Debug.LogWarning("Missing manual slot sprite: " + resourcePath);
+            ClearSlot(img);
+            return;
+        }
+        img.sprite = sprite;
+        img.preserveAspect = true;
+        img.enabled = true;
+    }
 
     // ================= UDP =================
     void StartReceiver() {
@@ -205,7 +469,7 @@ public class BahasaPasarGame : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Alpha2)) T("Ah Moi","Tambah","Pedas / Laht","Je");
         if (Input.GetKeyDown(KeyCode.Alpha3)) T("Makan","Sambal");
         if (Input.GetKeyDown(KeyCode.Alpha4)) T("Boss");
-        if (Input.GetKeyDown(KeyCode.D)) devPanel.SetActive(!devPanel.activeSelf);
+        if (Input.GetKeyDown(KeyCode.D)) ToggleDevPanel();
 
         string msg=null; lock(locker){ while(queue.Count>0) msg=queue.Dequeue(); }
         if (msg==null) return;
@@ -335,8 +599,14 @@ public class BahasaPasarGame : MonoBehaviour
     // ================= DISPLAY =================
     void FillSprites(List<string> modules) {
         ClearSprites();
-        emptyMsg.SetActive(modules.Count==0);
-        foreach (var mName in modules) AddSpriteBox(mName);
+        var sp = Sel("speaker");
+        bool hasCharacter = sp != null;
+        if (emptyMsg != null) emptyMsg.SetActive(modules.Count==0 && !hasCharacter);
+        if (hasCharacter) AddCharacterBox(sp);
+        foreach (var mName in modules) {
+            if (mName.Contains("base character") || mName.Contains("expression")) continue;
+            if (spriteRow != null) AddSpriteBox(mName);
+        }
     }
     void ShowEmpty() { FillSprites(new List<string>());
         Show("", "", "", "", Color.gray); if(sentenceText!=null) sentenceText.text=""; }
